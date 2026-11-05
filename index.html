@@ -27,11 +27,13 @@ button,.filebtn{border:1px solid #a78a54;background:#1a1a1a;color:#fff;padding:8
 <div id="phone"><h3>▣ PHONE MUSIC</h3><div id="song">No track loaded</div><label class="filebtn" for="file">SELECT AUDIO FILE</label><input id="file" type="file" accept="audio/*"><div class="phonebuttons"><button id="play">PLAY</button><button id="stop">STOP</button></div><label style="font-size:10px;color:#c9c9c9">VOLUME</label><input id="volume" type="range" min="0" max="100" value="70"><audio id="audio"></audio></div></div>
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import { RoomEnvironment } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/environments/RoomEnvironment.js';
 const game=document.querySelector('#game'),loading=document.querySelector('#loading'),hud=document.querySelector('#hud');
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x8798a7);scene.fog=new THREE.FogExp2(0x8798a7,.012);
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,100);camera.position.set(0,1.7,7);
 const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.75));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.32;renderer.physicallyCorrectLights=true;renderer.setClearColor(0x8798a7);game.appendChild(renderer.domElement);
-scene.add(new THREE.HemisphereLight(0xc8e2ff,0x403024,2));
+const pmrem=new THREE.PMREMGenerator(renderer);scene.environment=pmrem.fromScene(new RoomEnvironment(renderer),.04).texture;pmrem.dispose();
+scene.add(new THREE.HemisphereLight(0xc8e2ff,0x403024,1.35));
 const sun=new THREE.DirectionalLight(0xffe0b0,3);sun.position.set(-7,12,6);sun.castShadow=true;sun.shadow.mapSize.set(3072,3072);sun.shadow.camera.left=-16;sun.shadow.camera.right=16;sun.shadow.camera.top=16;sun.shadow.camera.bottom=-16;sun.shadow.bias=-.00015;sun.shadow.normalBias=.025;scene.add(sun);
 const mat=(color,roughness=.8,metalness=0)=>new THREE.MeshStandardMaterial({color,roughness,metalness});
 const clock=new THREE.Clock();
@@ -41,9 +43,18 @@ function proceduralTexture(kind){
  else{ctx.fillStyle='#aaa79c';ctx.fillRect(0,0,512,512);for(let i=0;i<5000;i++){const v=110+Math.random()*100;ctx.fillStyle='rgba('+v+','+v+','+(v-5)+',.12)';ctx.fillRect(Math.random()*512,Math.random()*512,2+Math.random()*5,2+Math.random()*5)}}
  const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(kind==='wood'?3:2,kind==='wood'?3:2);t.colorSpace=THREE.SRGBColorSpace;return t;
 }
-const floorMat=new THREE.MeshStandardMaterial({map:proceduralTexture('wood'),roughness:.72}),wallMat=new THREE.MeshStandardMaterial({map:proceduralTexture('wall'),roughness:.92}),dark=mat(0x171c25,.4),gold=mat(0xd7b56e,.3,.65);
+const floorTex=proceduralTexture('wood'),wallTex=proceduralTexture('wall');
+const floorMat=new THREE.MeshStandardMaterial({map:floorTex,roughness:.62}),wallMat=new THREE.MeshStandardMaterial({map:wallTex,roughness:.9}),dark=mat(0x171c25,.4),gold=new THREE.MeshPhysicalMaterial({color:0xd7b56e,roughness:.22,metalness:.8,clearcoat:1});
+function makeGrilleTexture(){
+ const cv=document.createElement('canvas');cv.width=256;cv.height=256;const x=cv.getContext('2d');x.fillStyle='#151a22';x.fillRect(0,0,256,256);
+ for(let y=5;y<256;y+=9)for(let xx=5;xx<256;xx+=9){x.fillStyle='#05080d';x.beginPath();x.arc(xx,y,2.1,0,Math.PI*2);x.fill();x.fillStyle='rgba(180,200,220,.16)';x.beginPath();x.arc(xx-1,y-1,1,0,Math.PI*2);x.fill()}
+ const t=new THREE.CanvasTexture(cv);t.colorSpace=THREE.SRGBColorSpace;return t;
+}
+const grilleTexture=makeGrilleTexture();
+function roundedDetail(parent,w,h,d,x,y,z,material,r=.08){const g=new THREE.Group();g.position.set(x,y,z);parent.add(g);const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);m.castShadow=true;g.add(m);return g;}
 function box(w,h,d,x,y,z,m,shadow=true){const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);o.castShadow=shadow;o.receiveShadow=true;scene.add(o);return o}
 box(24,.25,24,0,-.18,0,floorMat);
+const floorSeams=mat(0x2b211b,.9);for(let x=-10;x<=10;x+=2.4)box(.018,.008,23,x,-.048,0,floorSeams,false);
 box(24,5,.25,0,2.3,-12,wallMat);box(.25,5,24,-12,2.3,0,wallMat);box(.25,5,24,12,2.3,0,wallMat);
 box(24,.2,.25,0,4.8,0,dark,false);
 box(24,.18,24,0,4.95,0,mat(0x252b35),false);
@@ -64,19 +75,37 @@ box(7,.06,5,0,.01,-1,mat(0x29394a));
 for(let i=0;i<7;i++)box(6.8,.012,.025,0,.05,-3.2+i*.72,mat(0x536579),false);box(3.8,.65,1.1,-5,.45,-6,mat(0x344a59));box(3.8,.45,.35,-5,.85,-5.55,mat(0x405c6b));
 box(2,.45,1.2,0,.25,-2,mat(0x31271e));box(2,.08,1.2,0,.52,-2,gold);
 box(4,.18,.5,0,1.8,-11.65,dark);for(let i=0;i<5;i++)box(.08,1.2,.08,-1.7+i*.85,1.1,-11.3,gold,false);
+// Ultra-wide wall television with a luminous cinematic display
+box(5.2,2.45,.18,5.4,2.8,-11.68,mat(0x090d14,.18,.65),false);
+const tvScreen=new THREE.Mesh(new THREE.PlaneGeometry(4.95,2.2),new THREE.MeshBasicMaterial({map:(()=>{const cv=document.createElement('canvas');cv.width=1024;cv.height=512;const x=cv.getContext('2d');const g=x.createLinearGradient(0,0,1024,512);g.addColorStop(0,'#071b30');g.addColorStop(.45,'#e27b48');g.addColorStop(1,'#16162b');x.fillStyle=g;x.fillRect(0,0,1024,512);x.fillStyle='#f4b879';x.beginPath();x.arc(760,150,85,0,7);x.fill();for(let i=0;i<18;i++){const h=80+Math.random()*260;x.fillStyle=['#101d2a','#172b3c','#26394a'][i%3];x.fillRect(i*62,512-h,48,h)}return new THREE.CanvasTexture(cv)})()}));tvScreen.position.set(5.4,2.8,-11.56);scene.add(tvScreen);
+box(5.6,.12,.35,5.4,1.52,-11.45,mat(0x222a34,.3,.5));
+for(let x of [3.3,7.5])box(.08,.55,.08,x,1.2,-11.35,gold,false);
+// Sofa: padded seat, back, arms and individual cushions
+const sofaFabric=new THREE.MeshStandardMaterial({color:0x344d60,roughness:.94});
+for(let x of [-6.25,-5,-3.75]){const cushion=new THREE.Mesh(new THREE.BoxGeometry(1.12,.22,.82),new THREE.MeshStandardMaterial({color:x===-5?0x405d70:0x31485b,roughness:.96}));cushion.position.set(x,.88,-5.95);cushion.castShadow=true;scene.add(cushion)}
+box(.28,1.05,1.15,-7,.72,-6,sofaFabric);box(.28,1.05,1.15,-3,.72,-6,sofaFabric);
+for(let x of [-6.1,-5,-3.9]){const pillow=new THREE.Mesh(new THREE.BoxGeometry(.65,.5,.18),new THREE.MeshStandardMaterial({color:0xc29a68,roughness:1}));pillow.position.set(x,1.35,-6.42);scene.add(pillow)}
+// Coffee table legs and glass top
+for(let x of [-.85,.85])for(let z of [-.42,.42])box(.08,.5,.08,x,.25,-2+z,mat(0x292d33,.3,.6));
+const tableGlass=new THREE.MeshPhysicalMaterial({color:0xb8d0d8,roughness:.08,metalness:.15,transmission:.28,transparent:true,opacity:.65,clearcoat:1});
+box(2.05,.07,1.25,0,.55,-2,tableGlass);
 for(let x of [-9,9]){const pot=new THREE.Mesh(new THREE.CylinderGeometry(.35,.25,.55,16),mat(0x8a5738));pot.position.set(x,.27,-7);scene.add(pot);const leaf=new THREE.Mesh(new THREE.SphereGeometry(.65,12,10),mat(0x286847));leaf.position.set(x,1,-7);leaf.scale.y=1.5;scene.add(leaf)}
 // Speaker units with glowing cones and pulsing rings
 const speakers=[{name:'PULSE X200',x:-7,z:-2,color:0x35dcff,battery:88,mesh:null,light:null},{name:'BOOM BOX PRO',x:7,z:-4,color:0xff4f9a,battery:64,mesh:null,light:null},{name:'MINI BEAT',x:4,z:5,color:0xa58bff,battery:96,mesh:null,light:null}];
 const speakerMeshes=[];
 speakers.forEach((s,i)=>{const group=new THREE.Group();group.position.set(s.x,0,s.z);scene.add(group);
 const body=new THREE.Mesh(new THREE.BoxGeometry(1.35,1.65,.85),mat(0x141b27,.35,.2));body.position.y=.83;body.castShadow=true;group.add(body);
-const face=new THREE.Mesh(new THREE.BoxGeometry(1.12,1.42,.06),mat(0x202d40,.45,.3));face.position.set(0,.85,.46);group.add(face);
+const face=new THREE.Mesh(new THREE.BoxGeometry(1.12,1.42,.06),new THREE.MeshPhysicalMaterial({color:0x202d40,roughness:.25,metalness:.55,clearcoat:1}));face.position.set(0,.85,.46);group.add(face);
+const grille=new THREE.Mesh(new THREE.PlaneGeometry(1.02,1.34),new THREE.MeshStandardMaterial({map:grilleTexture,roughness:.72,metalness:.45}));grille.position.set(0,.85,.497);group.add(grille);
+for(const gx of [-.53,.53]){const rail=new THREE.Mesh(new THREE.BoxGeometry(.035,1.38,.035),gold);rail.position.set(gx,.85,.51);group.add(rail)}
 for(const [y,r] of [[1.12,.43],[.48,.23]]){const ring=new THREE.Mesh(new THREE.TorusGeometry(r,.045,16,64),new THREE.MeshStandardMaterial({color:s.color,emissive:s.color,emissiveIntensity:2.1,metalness:.35,roughness:.22}));ring.position.set(0,y,.51);group.add(ring);const cone=new THREE.Mesh(new THREE.CircleGeometry(r*.82,64),new THREE.MeshPhysicalMaterial({color:0x080d15,roughness:.18,metalness:.45,clearcoat:1,clearcoatRoughness:.12}));cone.position.set(0,y,.515);group.add(cone)}
 const led=new THREE.PointLight(s.color,connectedColorIntensity(),7);led.position.set(0,1.5,1);group.add(led);
 const top=new THREE.Mesh(new THREE.BoxGeometry(1.05,.07,.62),mat(0x303846,.3,.35));top.position.set(0,1.68,0);group.add(top);
 for(let bx of [-.48,.48])for(let bz of [-.29,.29]){const screw=new THREE.Mesh(new THREE.CylinderGeometry(.035,.035,.018,12),gold);screw.rotation.x=Math.PI/2;screw.position.set(bx,1.53,bz);group.add(screw)}
 const control=new THREE.Mesh(new THREE.BoxGeometry(.32,.09,.08),mat(0x080b10,.25,.6));control.position.set(0,1.58,.48);group.add(control);
 const badge=new THREE.Mesh(new THREE.BoxGeometry(.48,.12,.025),gold);badge.position.set(0,.12,.47);group.add(badge);
+const powerLed=new THREE.Mesh(new THREE.SphereGeometry(.035,16,12),new THREE.MeshStandardMaterial({color:s.color,emissive:s.color,emissiveIntensity:2.5}));powerLed.position.set(.42,1.55,.53);group.add(powerLed);
+for(let k=0;k<3;k++){const knob=new THREE.Mesh(new THREE.CylinderGeometry(.055,.055,.045,24),mat(0x858d98,.25,.8));knob.rotation.x=Math.PI/2;knob.position.set(-.28+k*.28,1.55,.52);group.add(knob)}
 s.mesh=group;s.light=led;speakerMeshes.push(group);
 const label=document.createElement('div');});
 function connectedColorIntensity(){return .5}
